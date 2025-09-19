@@ -1,0 +1,19 @@
+{
+  "chain_id": 1,
+  "public_client_rpc": "https://mainnet.infura.io/v3/",
+  "wallet_address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
+  "include_ens_names": true,
+  "ens_public_client": "Obasimartins65.eth",
+  "api_key": "13fa508ea913c8c045a462ac",
+  "warehouse_endpoint": null,
+  "network_settings": {
+    "timeout": 30,
+    "retry_attempts": 3,
+    "gas_multiplier": 1.1
+  },
+  "security": {
+    "validate_addresses": true,
+    "check_balance_before_tx": true,
+    "wait_for_confirmation": true
+  }
+}

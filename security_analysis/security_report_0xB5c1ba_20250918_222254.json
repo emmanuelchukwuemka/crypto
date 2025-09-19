@@ -1,0 +1,41 @@
+{
+  "address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
+  "analysis_timestamp": "2025-09-18T22:22:53.996855",
+  "overall_risk_level": "HIGH",
+  "balance_eth": 0.000120125365581557,
+  "nonce": 137,
+  "risks": [
+    {
+      "category": "Balance Security",
+      "level": "HIGH",
+      "description": "Very low ETH balance for gas fees",
+      "recommendation": "Maintain minimum balance for transaction fees",
+      "evidence": [
+        "Balance: 0.000120125365581557 ETH"
+      ]
+    }
+  ],
+  "transaction_patterns": {
+    "total_transactions": 0,
+    "incoming_count": 0,
+    "outgoing_count": 0,
+    "average_gas_price": 0,
+    "max_value": 0,
+    "min_value": 0,
+    "frequent_addresses": [],
+    "suspicious_patterns": [
+      "No transaction history available"
+    ]
+  },
+  "recommendations": [
+    "\ud83d\udd34 Address high-risk issues before proceeding",
+    "\ud83d\udd0d Investigate suspicious transaction patterns",
+    "\ud83d\udd10 Always use hardware wallets for large amounts",
+    "\u2705 Verify all addresses with checksums",
+    "\ud83d\udcdd Keep detailed transaction records",
+    "\ud83d\udee1\ufe0f Monitor address activity regularly",
+    "\ud83d\udd12 Never share private keys or seed phrases",
+    "\ud83d\udcb0 Use multi-signature wallets for business use"
+  ],
+  "vulnerability_score": 50
+}

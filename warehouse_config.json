@@ -1,0 +1,59 @@
+{
+  "warehouse_config": {
+    "chain_id": 1,
+    "wallet_address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
+    "ens_name": "Obasimartins65.eth",
+    "api_key": "13fa508ea913c8c045a462ac",
+    "auto_withdraw_enabled": true,
+    "min_withdraw_threshold": 0.001
+  },
+  "splits_contracts": {
+    "split_main": "0x2ed6c4B5dA6378c7897AC67Ba9e43102Feb694EE",
+    "warehouse": "0x0000000000000000000000000000000000000000",
+    "waterfall_factory": "0x0000000000000000000000000000000000000000"
+  },
+  "supported_tokens": {
+    "ETH": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "decimals": 18,
+      "symbol": "ETH"
+    },
+    "USDC": {
+      "address": "0xA0b86a33E6bCc14F4B3b0d5a9b0F1a6D3b4e5c6d",
+      "decimals": 6,
+      "symbol": "USDC"
+    },
+    "DAI": {
+      "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      "decimals": 18,
+      "symbol": "DAI"
+    },
+    "WETH": {
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "decimals": 18,
+      "symbol": "WETH"
+    }
+  },
+  "network_settings": {
+    "rpc_endpoints": [
+      "https://ethereum-rpc.publicnode.com",
+      "https://rpc.ankr.com/eth",
+      "https://eth.drpc.org"
+    ],
+    "timeout": 15,
+    "retry_attempts": 3,
+    "gas_multiplier": 1.2
+  },
+  "monitoring": {
+    "check_interval_minutes": 5,
+    "auto_withdraw_on_detection": false,
+    "notification_webhooks": [],
+    "log_level": "INFO"
+  },
+  "security": {
+    "require_nonce_validation": true,
+    "max_gas_price_gwei": 100,
+    "confirm_transactions": true,
+    "validate_addresses": true
+  }
+}
