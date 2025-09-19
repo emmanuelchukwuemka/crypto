@@ -1,6 +1,5 @@
 """
-Ethereum Token Withdrawal Server
-RESTful API server for blockchain operations
+Main Flask application for Ethereum Token Withdrawal System
 """
 
 from flask import Flask, request, jsonify
@@ -28,6 +27,7 @@ CORS(app)  # Enable CORS for all routes
 # Global client instance
 ethereum_client: Optional[SimpleEthereumClient] = None
 
+
 def init_client():
     """Initialize the Ethereum client"""
     global ethereum_client
@@ -45,9 +45,9 @@ def get_client() -> SimpleEthereumClient:
     if ethereum_client is None:
         if not init_client():
             raise Exception("Ethereum client not initialized")
-    return ethereum_client
+    return ethereum_client  # type: ignore
 
-def create_response(success: bool, data: Any = None, error: str = None) -> Dict[str, Any]:
+def create_response(success: bool, data: Any = None, error: Optional[str] = None) -> Dict[str, Any]:
     """Create standardized API response"""
     response = {
         "success": success,
@@ -429,8 +429,17 @@ def internal_error(error):
     """Handle 500 errors"""
     return jsonify(create_response(False, error="Internal server error")), 500
 
-def main():
-    """Run the server"""
+
+    """Get the Ethereum client instance"""
+    global ethereum_client
+    if ethereum_client is None:
+        if not init_client():
+            raise Exception("Ethereum client not initialized")
+    return ethereum_client  # type: ignore
+
+
+def run_server():
+    """Run the Flask application"""
     print("🚀 Starting Ethereum Token Withdrawal Server")
     print("=" * 50)
     
@@ -443,18 +452,18 @@ def main():
     
     # Get system status
     try:
-        status = ethereum_client.get_system_status()
-        print(f"\n📊 System Status:")
-        print(f"   Connected: {'✅' if status['connected'] else '❌'}")
-        print(f"   Chain ID: {status['chain_id']}")
-        print(f"   Block: {status['current_block']}")
-        print(f"   Gas Price: {status['gas_price_gwei']:.3f} Gwei")
-        print(f"   Wallet: {status['wallet_address']}")
-        
-        # Test nonce
-        nonce = ethereum_client.get_nonce(status['wallet_address'])
-        print(f"   Current Nonce: {nonce} ✅")
-        
+        if ethereum_client is not None:
+            status = ethereum_client.get_system_status()
+            print(f"\n📊 System Status:")
+            print(f"   Connected: {'✅' if status['connected'] else '❌'}")
+            print(f"   Chain ID: {status['chain_id']}")
+            print(f"   Block: {status['current_block']}")
+
+            # Test nonce
+            if ethereum_client is not None:
+                nonce = ethereum_client.get_nonce(status['wallet_address'])
+                print(f"   Current Nonce: {nonce} ✅")
+
     except Exception as e:
         print(f"⚠️ Status check failed: {e}")
     
@@ -477,4 +486,4 @@ def main():
     app.run(host='0.0.0.0', port=5000, debug=False)
 
 if __name__ == "__main__":
-    main()
+    run_server()

@@ -123,7 +123,7 @@ def main():
     
     if not health.get('status') == 'healthy':
         print("❌ Server is not healthy or not running")
-        print("   Start the server with: python ethereum_server.py")
+        print("   Start the server with: python app.py")
         return
     
     print("✅ Server is healthy and running")

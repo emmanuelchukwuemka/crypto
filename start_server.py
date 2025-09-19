@@ -34,8 +34,8 @@ def start_development_server():
     
     try:
         # Import and run the server
-        from ethereum_server import main
-        main()
+        from app import run_server
+        run_server()
     except KeyboardInterrupt:
         print("\n🛑 Server stopped by user")
     except Exception as e:
@@ -72,7 +72,7 @@ def start_production_server(host="0.0.0.0", port=5000, workers=4):
         "--preload",
         "--access-logfile", "-",
         "--error-logfile", "-",
-        "ethereum_server:app"
+        "app:app"
     ]
     
     print(f"📍 Server will run on http://{host}:{port}")

@@ -52,7 +52,7 @@ Your Ethereum withdrawal system with **WarehouseClient** integration is now conf
 1. **Create New Web Service on Render:**
    - Service Type: `Web Service`
    - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn --bind 0.0.0.0:$PORT --workers 4 ethereum_server:app`
+   - Start Command: `gunicorn --bind 0.0.0.0:$PORT --workers 4 app:app`
 
 2. **Set Environment Variables:**
    ```
