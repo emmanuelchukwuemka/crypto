@@ -42,6 +42,7 @@ class SimpleEthereumClient:
                     "include_ens_names": os.getenv("ENS_NAME", "").endswith('.eth'),
                     "ens_public_client": os.getenv("ENS_NAME", ""),
                     "api_key": os.getenv("ETHEREUM_API_KEY", ""),
+                    "etherscan_api_key": os.getenv("ETHERSCAN_API_KEY", "PF423A8SIHNIXVM8K13X2S8G9YTKSDCZ"),
                     "warehouse_endpoint": None,
                     "network_settings": {
                         "timeout": 30,

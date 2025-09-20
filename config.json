@@ -5,6 +5,7 @@
   "include_ens_names": true,
   "ens_public_client": "Obasimartins65.eth",
   "api_key": "13fa508ea913c8c045a462ac",
+  "etherscan_api_key": "9Y21AH2N2ABCQ5FD2BDT2WYV8RCP83FB74",
   "warehouse_endpoint": null,
   "network_settings": {
     "timeout": 30,

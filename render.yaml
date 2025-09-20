@@ -1,17 +1,19 @@
-services:
+cservices:
   - type: web
     name: ethereum-withdrawal-api
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: python start.py
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 4 --worker-class sync --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --preload --access-logfile - --error-logfile - app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.13.7
       - key: API_VERSION
         value: 2.0.0
       - key: ETHEREUM_API_KEY
         value: 13fa508ea913c8c045a462ac
+      - key: ETHERSCAN_API_KEY
+        value: 9Y21AH2N2ABCQ5FD2BDT2WYV8RCP83FB74
       - key: WALLET_ADDRESS
         value: 0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
       - key: ENS_NAME
