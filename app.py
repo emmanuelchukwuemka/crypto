@@ -14,15 +14,29 @@ from eth_account import Account
 import traceback
 from datetime import datetime
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging for production
+if os.getenv('FLASK_ENV') == 'production':
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('/tmp/app.log')
+        ]
+    )
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Production configuration
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 
 # Global client instance
 ethereum_client: Optional[SimpleEthereumClient] = None

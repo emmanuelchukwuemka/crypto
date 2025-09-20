@@ -4,7 +4,7 @@ services:
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 4 --worker-class sync --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --preload --access-logfile - --error-logfile - app:app
+    startCommand: python start.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -22,5 +22,9 @@ services:
         value: https://ethereum-rpc.publicnode.com
       - key: FLASK_ENV
         value: production
+      - key: FLASK_DEBUG
+        value: false
+      - key: SECRET_KEY
+        value: your-secret-key-change-in-production
     domains:
       - ethereum-withdrawal-api.onrender.com
