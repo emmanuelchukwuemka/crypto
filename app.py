@@ -11,6 +11,7 @@ import os
 from typing import Dict, Any, Optional
 from simple_ethereum_client import SimpleEthereumClient
 from etherscan_nonce_tracker import EtherscanNonceTracker
+from splits_warehouse_client import SplitsWarehouseClient
 from eth_account import Account
 import traceback
 from datetime import datetime
@@ -39,8 +40,9 @@ CORS(app)  # Enable CORS for all routes
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 
-# Global client instance
+# Global client instances
 ethereum_client: Optional[SimpleEthereumClient] = None
+warehouse_client: Optional[SplitsWarehouseClient] = None
 
 
 def init_client():
@@ -52,6 +54,17 @@ def init_client():
         return True
     except Exception as e:
         logger.error(f"❌ Failed to initialize Ethereum client: {e}")
+        return False
+
+def init_warehouse_client():
+    """Initialize the Splits Warehouse client"""
+    global warehouse_client
+    try:
+        warehouse_client = SplitsWarehouseClient()
+        logger.info("✅ Splits Warehouse client initialized successfully")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize warehouse client: {e}")
         return False
 
 def get_client() -> SimpleEthereumClient:
@@ -94,7 +107,15 @@ def home():
             "POST /execute-withdrawal": "Execute complete withdrawal",
             "GET /withdraw-config/<address>": "Get withdrawal configuration",
             "GET /gas-price": "Get current gas price",
-            "GET /eip712-domain": "Get EIP-712 domain"
+            "GET /eip712-domain": "Get EIP-712 domain",
+            "GET /warehouse/health": "Warehouse health check",
+            "GET /warehouse/status": "Warehouse system status",
+            "GET /warehouse/balances": "Get warehouse balances",
+            "POST /warehouse/validate-nonce": "Validate nonce for warehouse",
+            "GET /warehouse/pending": "Get pending distributions",
+            "POST /warehouse/create-transaction": "Create warehouse transaction",
+            "POST /warehouse/withdraw": "Execute warehouse withdrawal",
+            "GET /warehouse/monitor": "Monitor warehouse opportunities"
         },
         "documentation": "Send requests to individual endpoints for functionality"
     })
@@ -414,6 +435,223 @@ def execute_withdrawal():
         logger.error(f"Withdrawal execution failed: {e}")
         return jsonify(create_response(False, error=str(e))), 400
 
+# Warehouse Integration Endpoints
+@app.route('/warehouse/health', methods=['GET'])
+def warehouse_health():
+    """Health check for warehouse operations"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        # Test basic connectivity
+        status = warehouse_client.get_system_status()
+        
+        health_status = {
+            "warehouse_service": "online",
+            "web3_connected": status['connection']['web3_connected'],
+            "chain_id": status['connection']['chain_id'],
+            "warehouse_ready": status['nonce_status']['warehouse_ready'],
+            "has_claimable_funds": status['warehouse_status']['has_claimable_funds']
+        }
+        
+        return jsonify(create_response(True, health_status))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/status', methods=['GET'])
+def get_warehouse_status():
+    """Get comprehensive warehouse status"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        status = warehouse_client.get_system_status()
+        return jsonify(create_response(True, status))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/balances', methods=['GET'])
+def get_warehouse_balances():
+    """Get warehouse balances for the configured address"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        address = warehouse_client.config["wallet_address"]
+        balances = warehouse_client.get_warehouse_balances(address)
+        
+        result = {
+            "address": address,
+            "balances": balances,
+            "total_value": sum(balances.values()),
+            "has_funds": any(balance > 0 for balance in balances.values()),
+            "claimable_tokens": [token for token, balance in balances.items() if balance > 0]
+        }
+        
+        return jsonify(create_response(True, result))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/validate-nonce', methods=['POST'])
+def validate_warehouse_nonce():
+    """Validate nonce for warehouse communication"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        data = request.get_json() or {}
+        address = data.get('address', warehouse_client.config["wallet_address"])
+        
+        validation = warehouse_client.validate_nonce_for_warehouse(address)
+        return jsonify(create_response(True, validation))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/pending', methods=['GET'])
+def get_pending_distributions():
+    """Get pending distributions for the address"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        address = warehouse_client.config["wallet_address"]
+        pending = warehouse_client.check_pending_distributions(address)
+        
+        result = {
+            "address": address,
+            "pending_distributions": pending,
+            "total_pending": len(pending),
+            "claimable_count": len([p for p in pending if p['claimable']])
+        }
+        
+        return jsonify(create_response(True, result))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/withdraw', methods=['POST'])
+def execute_warehouse_withdrawal():
+    """Execute automatic withdrawal from Splits Warehouse"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        data = request.get_json()
+        if not data:
+            return jsonify(create_response(False, error="JSON body required")), 400
+        
+        address = data.get('address', warehouse_client.config["wallet_address"])
+        private_key = data.get('private_key')
+        auto_detect = data.get('auto_detect_amounts', True)
+        
+        if not private_key:
+            return jsonify(create_response(False, error="private_key required")), 400
+        
+        # Validate private key format
+        if not private_key.startswith('0x'):
+            private_key = '0x' + private_key
+        
+        # Execute withdrawal in async context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                warehouse_client.execute_automatic_withdrawal(
+                    address, private_key, auto_detect
+                )
+            )
+        finally:
+            loop.close()
+        
+        if result['status'] == 'success':
+            return jsonify(create_response(True, result))
+        elif result['status'] == 'no_funds':
+            return jsonify(create_response(False, error=result['message'], data=result)), 400
+        else:
+            return jsonify(create_response(False, error=result.get('error', 'Withdrawal failed'), data=result)), 400
+        
+    except Exception as e:
+        logger.error(f"Warehouse withdrawal execution failed: {e}")
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/create-transaction', methods=['POST'])
+def create_warehouse_transaction():
+    """Create a withdrawal transaction for Splits Warehouse"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        data = request.get_json()
+        if not data:
+            return jsonify(create_response(False, error="JSON body required")), 400
+        
+        address = data.get('address', warehouse_client.config["wallet_address"])
+        withdraw_eth = float(data.get('withdraw_eth', 0))
+        tokens = data.get('tokens', [])
+        
+        # Create transaction
+        transaction = warehouse_client.create_withdrawal_transaction(
+            address, withdraw_eth, tokens
+        )
+        
+        # Calculate cost estimate
+        gas_cost_wei = transaction['gas'] * transaction['gasPrice']
+        gas_cost_eth = float(warehouse_client.w3.from_wei(gas_cost_wei, 'ether'))
+        
+        result = {
+            "transaction": transaction,
+            "withdrawal_details": {
+                "address": address,
+                "eth_amount": withdraw_eth,
+                "tokens": tokens,
+                "gas_estimate": transaction['gas'],
+                "gas_cost_eth": gas_cost_eth
+            },
+            "ready_to_sign": True
+        }
+        
+        return jsonify(create_response(True, result))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 400
+
+@app.route('/warehouse/monitor', methods=['GET'])
+def monitor_warehouse():
+    """Monitor warehouse for automatic withdrawal opportunities"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        address = warehouse_client.config["wallet_address"]
+        
+        # Get current status
+        balances = warehouse_client.get_warehouse_balances(address)
+        nonce_status = warehouse_client.validate_nonce_for_warehouse(address)
+        pending = warehouse_client.check_pending_distributions(address)
+        
+        # Determine if automatic withdrawal should be triggered
+        has_funds = any(balance > 0 for balance in balances.values())
+        is_ready = nonce_status['warehouse_ready']
+        
+        monitoring_result = {
+            "address": address,
+            "balances": balances,
+            "nonce_status": nonce_status,
+            "pending_distributions": pending,
+            "auto_withdraw_recommended": has_funds and is_ready,
+            "monitoring_timestamp": datetime.now().isoformat(),
+            "next_check_recommended": datetime.now().isoformat()
+        }
+        
+        return jsonify(create_response(True, monitoring_result))
+        
+    except Exception as e:
+        return jsonify(create_response(False, error=str(e))), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -446,8 +684,8 @@ def internal_error(error):
 
 def run_server():
     """Run the Flask application"""
-    print("🚀 Starting Ethereum Token Withdrawal Server")
-    print("=" * 50)
+    print("🚀 Starting Ethereum Token Withdrawal Server with Warehouse Integration")
+    print("=" * 70)
 
     # Initialize the Ethereum client
     if not init_client():
@@ -455,6 +693,13 @@ def run_server():
         return
 
     print("✅ Ethereum client initialized")
+    
+    # Initialize the Warehouse client
+    warehouse_init = init_warehouse_client()
+    if warehouse_init:
+        print("✅ Warehouse client initialized")
+    else:
+        print("⚠️ Warehouse client failed to initialize (will continue without warehouse features)")
 
     # Get system status
     try:
@@ -484,9 +729,24 @@ def run_server():
     print(f"   🌐 Resolve ENS: POST /resolve-ens")
     print(f"   📋 Create TX: POST /create-transaction")
     print(f"   🚀 Execute Withdrawal: POST /execute-withdrawal")
+    
+    if warehouse_init:
+        print(f"\n🏭 Warehouse Endpoints:")
+        print(f"   💚 Warehouse Health: GET /warehouse/health")
+        print(f"   📊 Warehouse Status: GET /warehouse/status")
+        print(f"   💰 Warehouse Balances: GET /warehouse/balances")
+        print(f"   🔢 Validate Warehouse Nonce: POST /warehouse/validate-nonce")
+        print(f"   📋 Pending Distributions: GET /warehouse/pending")
+        print(f"   📋 Create Warehouse Transaction: POST /warehouse/create-transaction")
+        print(f"   🚀 Execute Warehouse Withdrawal: POST /warehouse/withdraw")
+        print(f"   📊 Monitor Warehouse: GET /warehouse/monitor")
 
     print(f"\n🎯 Ready to serve requests!")
-    print("=" * 50)
+    if warehouse_init:
+        print("✅ Both Etherscan API and Warehouse API are integrated and ready!")
+    else:
+        print("✅ Etherscan API is ready (Warehouse API unavailable)")
+    print("=" * 70)
 
     # Run the Flask server
     port = int(os.getenv('PORT', 5000))

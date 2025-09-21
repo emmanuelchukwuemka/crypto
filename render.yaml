@@ -4,7 +4,7 @@ services:
     env: python
     plan: starter
     buildCommand: pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 4 --worker-class sync --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --preload --access-logfile - --error-logfile - app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --worker-class sync --timeout 300 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --preload --access-logfile - --error-logfile - app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.5
@@ -27,6 +27,6 @@ services:
       - key: FLASK_DEBUG
         value: false
       - key: SECRET_KEY
-        value: your-secret-key-change-in-production
+        value: eth-withdrawal-api-secret-prod-2025
     domains:
       - ethereum-withdrawal-api.onrender.com
