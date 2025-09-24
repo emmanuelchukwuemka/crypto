@@ -60,11 +60,25 @@ def init_warehouse_client():
     """Initialize the Splits Warehouse client"""
     global warehouse_client
     try:
+        # Ensure config files exist
+        if not os.path.exists('warehouse_config.json'):
+            logger.warning("warehouse_config.json not found, using config.json")
+        
         warehouse_client = SplitsWarehouseClient()
-        logger.info("✅ Splits Warehouse client initialized successfully")
+        
+        # Test the client connection
+        test_address = warehouse_client.config["wallet_address"]
+        nonce_validation = warehouse_client.validate_nonce_for_warehouse(test_address)
+        
+        if nonce_validation['warehouse_ready']:
+            logger.info("✅ Splits Warehouse client initialized and ready")
+        else:
+            logger.warning("⚠️ Warehouse client initialized but not ready for operations")
+            
         return True
     except Exception as e:
         logger.error(f"❌ Failed to initialize warehouse client: {e}")
+        warehouse_client = None
         return False
 
 def get_client() -> SimpleEthereumClient:
@@ -115,6 +129,7 @@ def home():
             "GET /warehouse/pending": "Get pending distributions",
             "POST /warehouse/create-transaction": "Create warehouse transaction",
             "POST /warehouse/withdraw": "Execute warehouse withdrawal",
+            "POST /warehouse/complete-withdraw": "Execute complete 2-step withdrawal (source->warehouse->wallet)",
             "GET /warehouse/monitor": "Monitor warehouse opportunities"
         },
         "documentation": "Send requests to individual endpoints for functionality"
@@ -533,6 +548,133 @@ def get_pending_distributions():
     except Exception as e:
         return jsonify(create_response(False, error=str(e))), 500
 
+@app.route('/warehouse/trigger-withdrawal', methods=['POST'])
+def trigger_warehouse_withdrawal():
+    """Trigger withdrawal from WarehouseClient to wallet"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        data = request.get_json()
+        if not data:
+            return jsonify(create_response(False, error="JSON body required")), 400
+        
+        address = data.get('address', warehouse_client.config["wallet_address"])
+        private_key = data.get('private_key')
+        
+        if not private_key:
+            return jsonify(create_response(False, error="private_key required")), 400
+        
+        # Validate private key format
+        if not private_key.startswith('0x'):
+            private_key = '0x' + private_key
+        
+        # Check if there are funds available
+        balances = warehouse_client.get_warehouse_balances(address)
+        has_funds = any(balance > 0 for balance in balances.values())
+        
+        if not has_funds:
+            return jsonify(create_response(False, error="No funds available in warehouse", data={
+                "balances": balances
+            })), 400
+        
+        # Execute complete withdrawal in async context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                warehouse_client.execute_complete_withdrawal(
+                    address, private_key, True
+                )
+            )
+        finally:
+            loop.close()
+        
+        if result['status'] == 'complete_success':
+            return jsonify(create_response(True, {
+                "message": "Withdrawal successful! Tokens are now in your wallet.",
+                "step1": result['step1_withdrawal'],
+                "step2": result['step2_release'],
+                "final_status": result['final_status'],
+                "process_time": result['total_process_time']
+            }))
+        else:
+            return jsonify(create_response(False, 
+                error=f"Withdrawal failed: {result.get('error', result['status'])}",
+                data=result
+            )), 400
+        
+    except Exception as e:
+        logger.error(f"Warehouse withdrawal trigger failed: {e}")
+        return jsonify(create_response(False, error=str(e))), 500
+
+@app.route('/warehouse/complete-withdraw', methods=['POST'])
+def execute_complete_warehouse_withdrawal():
+    """Execute complete two-step withdrawal from Splits Warehouse to wallet"""
+    try:
+        if not warehouse_client:
+            return jsonify(create_response(False, error="Warehouse client not initialized")), 500
+        
+        data = request.get_json()
+        if not data:
+            return jsonify(create_response(False, error="JSON body required")), 400
+        
+        address = data.get('address', warehouse_client.config["wallet_address"])
+        private_key = data.get('private_key')
+        auto_detect = data.get('auto_detect_amounts', True)
+        
+        if not private_key:
+            return jsonify(create_response(False, error="private_key required")), 400
+        
+        # Validate private key format
+        if not private_key.startswith('0x'):
+            private_key = '0x' + private_key
+        
+        # Execute complete withdrawal in async context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                warehouse_client.execute_complete_withdrawal(
+                    address, private_key, auto_detect
+                )
+            )
+        finally:
+            loop.close()
+        
+        if result['status'] == 'complete_success':
+            return jsonify(create_response(True, {
+                "message": "Complete withdrawal successful! Tokens are now in your wallet.",
+                "step1": result['step1_withdrawal'],
+                "step2": result['step2_release'],
+                "final_status": result['final_status'],
+                "process_time": result['total_process_time']
+            }))
+        elif result['status'] == 'step1_failed':
+            return jsonify(create_response(False, 
+                error="Step 1 failed: Could not withdraw from source to warehouse",
+                data=result
+            )), 400
+        elif result['status'] == 'step2_failed':
+            return jsonify(create_response(False, 
+                error="Step 2 failed: Tokens in warehouse but not released to wallet",
+                data=result
+            )), 400
+        elif result['status'] == 'no_warehouse_funds':
+            return jsonify(create_response(False, 
+                error="No funds found in warehouse after step 1",
+                data=result
+            )), 400
+        else:
+            return jsonify(create_response(False, 
+                error=result.get('error', 'Complete withdrawal failed'),
+                data=result
+            )), 400
+        
+    except Exception as e:
+        logger.error(f"Complete warehouse withdrawal execution failed: {e}")
+        return jsonify(create_response(False, error=str(e))), 500
+
 @app.route('/warehouse/withdraw', methods=['POST'])
 def execute_warehouse_withdrawal():
     """Execute automatic withdrawal from Splits Warehouse"""
@@ -555,24 +697,64 @@ def execute_warehouse_withdrawal():
         if not private_key.startswith('0x'):
             private_key = '0x' + private_key
         
-        # Execute withdrawal in async context
+        # Execute complete withdrawal in async context (2-step process by default)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            result = loop.run_until_complete(
-                warehouse_client.execute_automatic_withdrawal(
-                    address, private_key, auto_detect
+            # Use complete withdrawal by default for better user experience
+            use_complete_process = data.get('use_complete_process', True)
+            
+            if use_complete_process:
+                result = loop.run_until_complete(
+                    warehouse_client.execute_complete_withdrawal(
+                        address, private_key, auto_detect
+                    )
                 )
-            )
+            else:
+                # Legacy single-step withdrawal
+                result = loop.run_until_complete(
+                    warehouse_client.execute_automatic_withdrawal(
+                        address, private_key, auto_detect
+                    )
+                )
         finally:
             loop.close()
         
-        if result['status'] == 'success':
-            return jsonify(create_response(True, result))
-        elif result['status'] == 'no_funds':
-            return jsonify(create_response(False, error=result['message'], data=result)), 400
+        # Handle different result types
+        if use_complete_process:
+            # Complete withdrawal process results
+            if result['status'] == 'complete_success':
+                return jsonify(create_response(True, {
+                    "message": "Complete withdrawal successful! Tokens are now in your wallet.",
+                    "step1": result['step1_withdrawal'],
+                    "step2": result['step2_release'],
+                    "final_status": result['final_status'],
+                    "process_time": result['total_process_time'],
+                    "process_type": "complete_two_step"
+                }))
+            elif result['status'] == 'step1_failed':
+                return jsonify(create_response(False, 
+                    error="Step 1 failed: Could not withdraw from source to WarehouseClient",
+                    data=result
+                )), 400
+            elif result['status'] == 'step2_failed':
+                return jsonify(create_response(False, 
+                    error="Step 2 failed: Tokens in WarehouseClient but not released to wallet",
+                    data=result
+                )), 400
+            else:
+                return jsonify(create_response(False, 
+                    error=result.get('error', 'Complete withdrawal failed'),
+                    data=result
+                )), 400
         else:
-            return jsonify(create_response(False, error=result.get('error', 'Withdrawal failed'), data=result)), 400
+            # Legacy single-step withdrawal results
+            if result['status'] == 'success':
+                return jsonify(create_response(True, result))
+            elif result['status'] == 'no_funds':
+                return jsonify(create_response(False, error=result['message'], data=result)), 400
+            else:
+                return jsonify(create_response(False, error=result.get('error', 'Withdrawal failed'), data=result)), 400
         
     except Exception as e:
         logger.error(f"Warehouse withdrawal execution failed: {e}")
@@ -694,21 +876,58 @@ def run_server():
 
     print("✅ Ethereum client initialized")
     
-    # Initialize the Warehouse client
+    # Initialize the Warehouse client with better error handling
     warehouse_init = init_warehouse_client()
     if warehouse_init:
         print("✅ Warehouse client initialized")
+        
+        # Test warehouse connectivity
+        try:
+            if warehouse_client is not None:
+                test_address = warehouse_client.config["wallet_address"]
+                warehouse_status = warehouse_client.get_system_status()
+                
+                print(f"🏭 Warehouse System Check:")
+                print(f"   Web3 Connected: {'✅' if warehouse_status['connection']['web3_connected'] else '❌'}")
+                print(f"   Warehouse Ready: {'✅' if warehouse_status['nonce_status']['warehouse_ready'] else '❌'}")
+                print(f"   Claimable Funds: {'✅' if warehouse_status['warehouse_status']['has_claimable_funds'] else '❌'}")
+                
+                if warehouse_status['warehouse_status']['has_claimable_funds']:
+                    print(f"💰 Available balances:")
+                    for token, balance in warehouse_status['warehouse_status']['balances'].items():
+                        if balance > 0:
+                            print(f"     {token}: {balance}")
+                    
+                    print(f"\n🤖 TIP: You can start automatic monitoring with:")
+                    print(f"   python auto_withdrawal_monitor.py")
+                    
+        except Exception as e:
+            print(f"⚠️ Warehouse connectivity test failed: {e}")
     else:
         print("⚠️ Warehouse client failed to initialize (will continue without warehouse features)")
+        print("   Check your warehouse_config.json and ensure all dependencies are installed")
 
     # Get system status
     try:
         if ethereum_client is not None:
             status = ethereum_client.get_system_status()
-            print(f"\n📊 System Status:")
+            print(f"\n📊 Ethereum System Status:")
             print(f"   Connected: {'✅' if status['connected'] else '❌'}")
             print(f"   Chain ID: {status['chain_id']}")
             print(f"   Block: {status['current_block']}")
+            
+            # Enhanced Etherscan integration check
+            etherscan_status = status.get('etherscan_integration', {})
+            if etherscan_status:
+                print(f"\n🔍 Etherscan Integration:")
+                print(f"   API Key: {'✅ Configured' if etherscan_status.get('api_key_configured') else '❌ Missing'}")
+                print(f"   Tracking Active: {'✅' if etherscan_status.get('tracking_active') else '❌'}")
+                print(f"   API Calls Today: {etherscan_status.get('api_calls_today', 0)}")
+                
+                nonce_tracking = etherscan_status.get('nonce_tracking', {})
+                if nonce_tracking:
+                    print(f"   Nonce Consistency: {'✅' if nonce_tracking.get('nonce_consistency') else '⚠️'}")
+                    print(f"   Can Communicate: {'✅' if nonce_tracking.get('can_communicate') else '❌'}")
 
             # Test nonce
             if ethereum_client is not None:
@@ -739,13 +958,28 @@ def run_server():
         print(f"   📋 Pending Distributions: GET /warehouse/pending")
         print(f"   📋 Create Warehouse Transaction: POST /warehouse/create-transaction")
         print(f"   🚀 Execute Warehouse Withdrawal: POST /warehouse/withdraw")
+        print(f"   🎆 Complete Withdrawal (2-Step): POST /warehouse/complete-withdraw")
         print(f"   📊 Monitor Warehouse: GET /warehouse/monitor")
 
-    print(f"\n🎯 Ready to serve requests!")
-    if warehouse_init:
-        print("✅ Both Etherscan API and Warehouse API are integrated and ready!")
+    print(f"\n🎯 Service Status Summary:")
+    ethereum_ready = ethereum_client is not None
+    warehouse_ready = warehouse_client is not None
+    
+    if ethereum_ready and warehouse_ready:
+        print("✅ FULLY OPERATIONAL - Both Etherscan and Warehouse services are running!")
+        print("✅ Etherscan API: Ready for nonce tracking and transaction monitoring")
+        print("✅ Warehouse API: Ready for automatic token withdrawals")
+        print("\n💡 NEXT STEPS:")
+        print("   1. Start the auto-withdrawal monitor: python auto_withdrawal_monitor.py")
+        print("   2. Monitor pending tokens via: GET /warehouse/pending")
+        print("   3. Check system health via: GET /warehouse/health")
+    elif ethereum_ready:
+        print("⚠️ PARTIALLY OPERATIONAL - Etherscan service running, Warehouse unavailable")
+        print("✅ Etherscan API: Ready")
+        print("❌ Warehouse API: Not available")
     else:
-        print("✅ Etherscan API is ready (Warehouse API unavailable)")
+        print("❌ SERVICE ISSUES - Please check configuration and dependencies")
+        
     print("=" * 70)
 
     # Run the Flask server

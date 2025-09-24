@@ -11,6 +11,7 @@ from web3 import Web3
 from eth_account import Account
 import requests
 import logging
+import os
 from datetime import datetime
 
 # Configure logging
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class SplitsWarehouseClient:
     """Client for interacting with Splits Warehouse protocol"""
     
-    def __init__(self, config_file: str = "../config.json"):
+    def __init__(self, config_file: str = "warehouse_config.json"):
         self.config = self.load_config(config_file)
         self.w3 = None
         self.initialize_web3()
@@ -43,8 +44,30 @@ class SplitsWarehouseClient:
     def load_config(self, config_file: str) -> Dict[str, Any]:
         """Load configuration from JSON file"""
         try:
-            with open(config_file, 'r') as f:
-                return json.load(f)
+            # Try to load warehouse-specific config first
+            if config_file.endswith('warehouse_config.json') and os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    config_data = json.load(f)
+                    # Extract the warehouse_config section
+                    if 'warehouse_config' in config_data:
+                        return config_data['warehouse_config']
+                    else:
+                        return config_data
+            
+            # Fallback to main config.json
+            if os.path.exists('config.json'):
+                with open('config.json', 'r') as f:
+                    return json.load(f)
+            
+            # Environment variables fallback
+            return {
+                "chain_id": int(os.getenv("CHAIN_ID", "1")),
+                "wallet_address": os.getenv("WALLET_ADDRESS", "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58"),
+                "api_key": os.getenv("API_KEY", "13fa508ea913c8c045a462ac"),
+                "ens_public_client": os.getenv("ENS_NAME", "Obasimartins65.eth"),
+                "auto_withdraw_enabled": True,
+                "min_withdraw_threshold": 0.001
+            }
         except Exception as e:
             logger.error(f"Failed to load config: {e}")
             # Use memory configuration as fallback
@@ -52,7 +75,9 @@ class SplitsWarehouseClient:
                 "chain_id": 1,
                 "wallet_address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
                 "api_key": "13fa508ea913c8c045a462ac",
-                "ens_public_client": "Obasimartins65.eth"
+                "ens_public_client": "Obasimartins65.eth",
+                "auto_withdraw_enabled": True,
+                "min_withdraw_threshold": 0.001
             }
     
     def initialize_web3(self):
@@ -149,6 +174,9 @@ class SplitsWarehouseClient:
     def get_warehouse_balances(self, address: str) -> Dict[str, float]:
         """Get balances in Splits Warehouse for an address"""
         try:
+            if self.w3 is None or not self.w3.is_connected():
+                raise Exception("Web3 client not initialized")
+                
             balances = {}
             
             # Get Split Main contract
@@ -222,10 +250,13 @@ class SplitsWarehouseClient:
         self, 
         address: str, 
         withdraw_eth: float = 0, 
-        tokens: List[str] = None
+        tokens: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Create a withdrawal transaction for Splits Warehouse"""
         try:
+            if self.w3 is None or not self.w3.is_connected():
+                raise Exception("Web3 client not initialized or not connected")
+                        
             if tokens is None:
                 tokens = []
             
@@ -270,6 +301,9 @@ class SplitsWarehouseClient:
     def validate_nonce_for_warehouse(self, address: str) -> Dict[str, Any]:
         """Validate nonce specifically for warehouse interactions"""
         try:
+            if self.w3 is None or not self.w3.is_connected():
+                raise Exception("Web3 client not initialized")
+                
             current_nonce = self.w3.eth.get_transaction_count(address, 'latest')
             pending_nonce = self.w3.eth.get_transaction_count(address, 'pending')
             
@@ -338,7 +372,10 @@ class SplitsWarehouseClient:
                 withdraw_tokens
             )
             
-            # Step 5: Sign and send transaction
+            if self.w3 is None or not self.w3.is_connected():
+                raise Exception("Web3 client not initialized")
+                
+            # Sign and send transaction
             signed_txn = Account.sign_transaction(transaction, private_key)
             tx_hash = self.w3.eth.send_raw_transaction(signed_txn.rawTransaction)
             tx_hash_hex = tx_hash.hex()
@@ -365,6 +402,151 @@ class SplitsWarehouseClient:
             
         except Exception as e:
             logger.error(f"Automatic withdrawal failed: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    async def execute_complete_withdrawal(
+        self, 
+        address: str, 
+        private_key: str,
+        auto_detect_amounts: bool = True
+    ) -> Dict[str, Any]:
+        """Execute complete two-step withdrawal: source -> warehouse -> wallet"""
+        try:
+            logger.info(f"🚀 Starting complete two-step withdrawal for {address}")
+            
+            # Step 1: Execute initial withdrawal to warehouse
+            step1_result = await self.execute_automatic_withdrawal(
+                address, private_key, auto_detect_amounts
+            )
+            
+            if step1_result['status'] != 'success':
+                return {
+                    "status": "step1_failed",
+                    "step1_result": step1_result,
+                    "message": "Failed at step 1: withdrawal to warehouse"
+                }
+            
+            logger.info(f"✅ Step 1 completed: {step1_result['transaction_hash']}")
+            
+            # Wait a bit for the transaction to be processed
+            await asyncio.sleep(10)
+            
+            # Step 2: Release from warehouse to actual wallet
+            logger.info(f"🚀 Step 2: Releasing tokens from warehouse to wallet...")
+            
+            # Check warehouse balances after step 1
+            warehouse_balances = self.get_warehouse_balances(address)
+            
+            if not any(balance > 0 for balance in warehouse_balances.values()):
+                return {
+                    "status": "no_warehouse_funds",
+                    "step1_result": step1_result,
+                    "message": "No funds in warehouse after step 1"
+                }
+            
+            # Create release transaction from warehouse
+            step2_result = await self.execute_warehouse_release(
+                address, private_key, warehouse_balances
+            )
+            
+            # Combine results
+            final_result = {
+                "status": "complete_success" if step2_result['status'] == 'success' else "step2_failed",
+                "step1_withdrawal": step1_result,
+                "step2_release": step2_result,
+                "total_process_time": "~2-5 minutes",
+                "final_status": "Tokens now in your wallet" if step2_result['status'] == 'success' else "Tokens stuck in warehouse"
+            }
+            
+            if step2_result['status'] == 'success':
+                logger.info(f"🎉 Complete withdrawal successful! Tokens are now in your wallet.")
+            else:
+                logger.warning(f"⚠️ Step 2 failed. Tokens are in warehouse but not released to wallet.")
+            
+            return final_result
+            
+        except Exception as e:
+            logger.error(f"Complete withdrawal failed: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    async def execute_warehouse_release(
+        self, 
+        address: str, 
+        private_key: str,
+        balances: Dict[str, float]
+    ) -> Dict[str, Any]:
+        """Release tokens from warehouse to actual wallet"""
+        try:
+            if self.w3 is None or not self.w3.is_connected():
+                raise Exception("Web3 client not initialized")
+            
+            logger.info(f"💰 Releasing {sum(balances.values())} total value from warehouse")
+            
+            # Get Split Main contract for warehouse release
+            split_contract = self.w3.eth.contract(
+                address=self.splits_addresses["split_main"],
+                abi=self.get_split_contract_abi()
+            )
+            
+            # Prepare tokens for release
+            eth_amount = balances.get("ETH", 0)
+            token_addresses = []
+            
+            for token_name, balance in balances.items():
+                if token_name != "ETH" and balance > 0 and token_name in self.common_tokens:
+                    token_addresses.append(self.common_tokens[token_name])
+            
+            # Get current nonce
+            nonce = self.w3.eth.get_transaction_count(address, 'pending')
+            
+            # Build warehouse release transaction
+            transaction = split_contract.functions.withdraw(
+                address,  # Recipient (your wallet)
+                Web3.to_wei(eth_amount, 'ether') if eth_amount > 0 else 0,
+                token_addresses
+            ).build_transaction({
+                'from': address,
+                'nonce': nonce,
+                'gas': 400000,  # Higher gas for warehouse release
+                'gasPrice': int(self.w3.eth.gas_price * 1.2),  # 20% higher gas price for faster processing
+                'chainId': self.config['chain_id']
+            })
+            
+            # Sign and send transaction
+            signed_txn = Account.sign_transaction(transaction, private_key)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            tx_hash_hex = tx_hash.hex()
+            
+            logger.info(f"✅ Warehouse release transaction sent: {tx_hash_hex}")
+            
+            # Wait for confirmation
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash_hex, timeout=300)
+            
+            result = {
+                "status": "success" if receipt['status'] == 1 else "failed",
+                "transaction_hash": tx_hash_hex,
+                "block_number": receipt['blockNumber'],
+                "gas_used": receipt['gasUsed'],
+                "released_eth": eth_amount,
+                "released_tokens": [token for token in balances.keys() if token != "ETH" and balances[token] > 0],
+                "nonce_used": transaction['nonce'],
+                "explorer_url": f"https://etherscan.io/tx/{tx_hash_hex}",
+                "process_type": "warehouse_release"
+            }
+            
+            logger.info(f"🎉 Warehouse release completed: {result['status'].upper()}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Warehouse release failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
