@@ -255,6 +255,21 @@ class SimpleEthereumClient:
                 "wallet_address": self.config["wallet_address"],
                 "ens_enabled": self.config.get("include_ens_names", False)
             }
+            
+            # Add Etherscan integration status if API key is configured
+            etherscan_api_key = self.config.get("etherscan_api_key")
+            if etherscan_api_key:
+                status["etherscan_integration"] = {
+                    "api_key_configured": True,
+                    "api_key_preview": f"{etherscan_api_key[:8]}..." if len(etherscan_api_key) > 8 else etherscan_api_key,
+                    "tracking_active": True
+                }
+            else:
+                status["etherscan_integration"] = {
+                    "api_key_configured": False,
+                    "tracking_active": False
+                }
+            
             return status
         except Exception as e:
             logger.error(f"System status error: {e}")

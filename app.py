@@ -922,12 +922,8 @@ def run_server():
                 print(f"\n🔍 Etherscan Integration:")
                 print(f"   API Key: {'✅ Configured' if etherscan_status.get('api_key_configured') else '❌ Missing'}")
                 print(f"   Tracking Active: {'✅' if etherscan_status.get('tracking_active') else '❌'}")
-                print(f"   API Calls Today: {etherscan_status.get('api_calls_today', 0)}")
-                
-                nonce_tracking = etherscan_status.get('nonce_tracking', {})
-                if nonce_tracking:
-                    print(f"   Nonce Consistency: {'✅' if nonce_tracking.get('nonce_consistency') else '⚠️'}")
-                    print(f"   Can Communicate: {'✅' if nonce_tracking.get('can_communicate') else '❌'}")
+                print(f"   Note: SimpleEthereumClient provides basic Etherscan integration")
+                print(f"   For full Etherscan features, use: python auto_withdrawal_monitor.py")
 
             # Test nonce
             if ethereum_client is not None:
@@ -966,16 +962,16 @@ def run_server():
     warehouse_ready = warehouse_client is not None
     
     if ethereum_ready and warehouse_ready:
-        print("✅ FULLY OPERATIONAL - Both Etherscan and Warehouse services are running!")
-        print("✅ Etherscan API: Ready for nonce tracking and transaction monitoring")
+        print("✅ FULLY OPERATIONAL - Both Ethereum and Warehouse services are running!")
+        print("✅ Ethereum API: Ready for basic operations")
         print("✅ Warehouse API: Ready for automatic token withdrawals")
         print("\n💡 NEXT STEPS:")
-        print("   1. Start the auto-withdrawal monitor: python auto_withdrawal_monitor.py")
+        print("   1. For full Etherscan integration, start: python auto_withdrawal_monitor.py")
         print("   2. Monitor pending tokens via: GET /warehouse/pending")
         print("   3. Check system health via: GET /warehouse/health")
     elif ethereum_ready:
-        print("⚠️ PARTIALLY OPERATIONAL - Etherscan service running, Warehouse unavailable")
-        print("✅ Etherscan API: Ready")
+        print("⚠️ PARTIALLY OPERATIONAL - Ethereum service running, Warehouse unavailable")
+        print("✅ Ethereum API: Ready")
         print("❌ Warehouse API: Not available")
     else:
         print("❌ SERVICE ISSUES - Please check configuration and dependencies")
