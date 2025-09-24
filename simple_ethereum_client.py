@@ -63,35 +63,47 @@ class SimpleEthereumClient:
     def initialize_client(self):
         """Initialize Web3 client with fallback endpoints"""
         try:
-            # Try multiple public RPC endpoints
+            # Try multiple public RPC endpoints with different configurations
             rpc_endpoints = [
-                "https://ethereum-rpc.publicnode.com",
-                "https://rpc.ankr.com/eth",
-                "https://eth.drpc.org",
-                "https://ethereum.blockpi.network/v1/rpc/public"
+                {"url": "https://ethereum-rpc.publicnode.com", "timeout": 15},
+                {"url": "https://rpc.ankr.com/eth", "timeout": 15},
+                {"url": "https://eth.drpc.org", "timeout": 15},
+                {"url": "https://ethereum.blockpi.network/v1/rpc/public", "timeout": 15},
+                {"url": "https://cloudflare-eth.com", "timeout": 20},
+                {"url": "https://mainnet.infura.io/v3/" + self.config.get("api_key", ""), "timeout": 15}
             ]
 
             for endpoint in rpc_endpoints:
                 try:
-                    logger.info(f"Trying to connect to {endpoint}")
-                    self.w3 = Web3(Web3.HTTPProvider(endpoint, request_kwargs={'timeout': 10}))
+                    logger.info(f"Trying to connect to {endpoint['url']}")
+                    self.w3 = Web3(Web3.HTTPProvider(
+                        endpoint['url'], 
+                        request_kwargs={'timeout': endpoint['timeout']}
+                    ))
 
                     if self.w3.is_connected():
-                        logger.info(f"✅ Connected to Ethereum via {endpoint}")
+                        logger.info(f"✅ Connected to Ethereum via {endpoint['url']}")
                         logger.info(f"📊 Chain ID: {self.w3.eth.chain_id}")
                         logger.info(f"📈 Current block: {self.w3.eth.block_number}")
                         break
+                    else:
+                        logger.warning(f"Failed to connect to {endpoint['url']}: Not connected")
 
                 except Exception as e:
-                    logger.warning(f"Failed to connect to {endpoint}: {e}")
+                    logger.warning(f"Failed to connect to {endpoint['url']}: {e}")
                     continue
 
             if not self.w3 or not self.w3.is_connected():
-                raise ConnectionError("Could not connect to any Ethereum RPC endpoint")
+                logger.warning("Could not connect to any Ethereum RPC endpoint - running in limited mode")
+                # Initialize with a default endpoint even if connection fails
+                # This allows the app to start and show Etherscan integration status
+                self.w3 = Web3(Web3.HTTPProvider("https://ethereum-rpc.publicnode.com"))
 
         except Exception as e:
             logger.error(f"Failed to initialize client: {e}")
-            raise
+            # Initialize with a default endpoint even if initialization fails
+            # This allows the app to start and show Etherscan integration status
+            self.w3 = Web3(Web3.HTTPProvider("https://ethereum-rpc.publicnode.com"))
 
     def validate_address(self, address: str) -> str:
         """Validate and checksum an Ethereum address"""
@@ -109,6 +121,9 @@ class SimpleEthereumClient:
     def get_nonce(self, address: str) -> int:
         """Get current nonce for address"""
         try:
+            if not self.w3:
+                raise ConnectionError("Ethereum client not initialized")
+                
             validated_address = self.validate_address(address)
             nonce = self.w3.eth.get_transaction_count(validated_address, 'pending')
             logger.info(f"📊 Current nonce for {validated_address}: {nonce}")
@@ -120,6 +135,10 @@ class SimpleEthereumClient:
     def is_valid_nonce(self, nonce: int, address: str) -> bool:
         """Check if nonce is valid for the address"""
         try:
+            if not self.w3:
+                logger.warning("Ethereum client not initialized, returning False for nonce validation")
+                return False
+                
             current_nonce = self.get_nonce(address)
             is_valid = nonce >= current_nonce
             status = "✅ VALID" if is_valid else "❌ INVALID"
@@ -132,6 +151,10 @@ class SimpleEthereumClient:
     def get_balance(self, address: str) -> float:
         """Get ETH balance for address"""
         try:
+            if not self.w3:
+                logger.warning("Ethereum client not initialized, returning 0.0 balance")
+                return 0.0
+                
             validated_address = self.validate_address(address)
             balance_wei = self.w3.eth.get_balance(validated_address)
             balance_eth = Web3.from_wei(balance_wei, 'ether')
@@ -144,6 +167,10 @@ class SimpleEthereumClient:
     def get_gas_price(self) -> int:
         """Get current gas price"""
         try:
+            if not self.w3:
+                logger.warning("Ethereum client not initialized, using fallback gas price")
+                return Web3.to_wei(20, 'gwei')  # 20 Gwei fallback
+                
             gas_price = self.w3.eth.gas_price
             gas_price_gwei = float(Web3.from_wei(gas_price, 'gwei'))
             logger.info(f"⛽ Gas price: {gas_price_gwei:.2f} Gwei")
@@ -155,6 +182,10 @@ class SimpleEthereumClient:
     def estimate_gas_for_transfer(self, from_addr: str, to_addr: str, amount_wei: int) -> int:
         """Estimate gas for ETH transfer"""
         try:
+            if not self.w3:
+                logger.warning("Ethereum client not initialized, using standard gas estimate")
+                return 21000  # Standard ETH transfer gas
+                
             transaction = {
                 'from': self.validate_address(from_addr),
                 'to': self.validate_address(to_addr),
@@ -170,6 +201,10 @@ class SimpleEthereumClient:
     async def resolve_ens_name(self, ens_name: str) -> Optional[str]:
         """Try to resolve ENS name (basic implementation)"""
         try:
+            if not self.w3:
+                logger.warning("Ethereum client not initialized, ENS resolution not available")
+                return None
+                
             if not ens_name.endswith('.eth'):
                 return None
 
@@ -192,6 +227,9 @@ class SimpleEthereumClient:
     def create_transaction(self, from_addr: str, to_addr: str, amount_eth: float) -> Dict[str, Any]:
         """Create a transaction dictionary"""
         try:
+            if not self.w3:
+                raise ConnectionError("Ethereum client not initialized")
+                
             from_addr = self.validate_address(from_addr)
             to_addr = self.validate_address(to_addr)
 
@@ -236,8 +274,17 @@ class SimpleEthereumClient:
 
     def get_eip712_domain(self) -> Dict[str, Any]:
         """Get EIP-712 domain structure"""
+        # Handle case where web3 might not be initialized
+        chain_id = 1
+        if self.w3:
+            try:
+                chain_id = self.w3.eth.chain_id
+            except:
+                # Use default chain ID if there's an error
+                chain_id = self.config.get("chain_id", 1)
+                
         return {
-            "chainId": self.w3.eth.chain_id,
+            "chainId": chain_id,
             "name": "Warehouse",
             "salt": "0x" + "0" * 64,
             "verifyingContract": self.config["wallet_address"],
@@ -247,11 +294,28 @@ class SimpleEthereumClient:
     def get_system_status(self) -> Dict[str, Any]:
         """Get comprehensive system status"""
         try:
+            # Check if web3 is initialized
+            connected = False
+            chain_id = 1
+            current_block = 0
+            gas_price_gwei = 0
+            
+            if self.w3:
+                try:
+                    connected = self.w3.is_connected()
+                    if connected:
+                        chain_id = self.w3.eth.chain_id
+                        current_block = self.w3.eth.block_number
+                        gas_price_gwei = float(Web3.from_wei(self.w3.eth.gas_price, 'gwei'))
+                except:
+                    # If there's an error checking connection, assume not connected
+                    connected = False
+            
             status = {
-                "connected": self.w3.is_connected(),
-                "chain_id": self.w3.eth.chain_id,
-                "current_block": self.w3.eth.block_number,
-                "gas_price_gwei": float(Web3.from_wei(self.w3.eth.gas_price, 'gwei')),
+                "connected": connected,
+                "chain_id": chain_id,
+                "current_block": current_block,
+                "gas_price_gwei": gas_price_gwei,
                 "wallet_address": self.config["wallet_address"],
                 "ens_enabled": self.config.get("include_ens_names", False)
             }

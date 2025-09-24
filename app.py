@@ -922,13 +922,18 @@ def run_server():
                 print(f"\n🔍 Etherscan Integration:")
                 print(f"   API Key: {'✅ Configured' if etherscan_status.get('api_key_configured') else '❌ Missing'}")
                 print(f"   Tracking Active: {'✅' if etherscan_status.get('tracking_active') else '❌'}")
-                print(f"   Note: SimpleEthereumClient provides basic Etherscan integration")
-                print(f"   For full Etherscan features, use: python auto_withdrawal_monitor.py")
-
-            # Test nonce
-            if ethereum_client is not None:
+                if status.get('connected'):
+                    print(f"   Note: Full Etherscan features available")
+                else:
+                    print(f"   Note: Etherscan API key configured but Ethereum connection unavailable")
+                    print(f"   To enable full features: Check network connectivity to Ethereum RPC endpoints")
+            
+            # Test nonce if connected
+            if ethereum_client is not None and status.get('connected'):
                 nonce = ethereum_client.get_nonce(status['wallet_address'])
                 print(f"   Current Nonce: {nonce} ✅")
+            elif ethereum_client is not None:
+                print(f"   Current Nonce: ❌ Unavailable (Ethereum connection failed)")
 
     except Exception as e:
         print(f"⚠️ Status check failed: {e}")
@@ -960,8 +965,9 @@ def run_server():
     print(f"\n🎯 Service Status Summary:")
     ethereum_ready = ethereum_client is not None
     warehouse_ready = warehouse_client is not None
+    ethereum_connected = status.get('connected', False) if 'status' in locals() else False
     
-    if ethereum_ready and warehouse_ready:
+    if ethereum_ready and warehouse_ready and ethereum_connected:
         print("✅ FULLY OPERATIONAL - Both Ethereum and Warehouse services are running!")
         print("✅ Ethereum API: Ready for basic operations")
         print("✅ Warehouse API: Ready for automatic token withdrawals")
@@ -969,13 +975,22 @@ def run_server():
         print("   1. For full Etherscan integration, start: python auto_withdrawal_monitor.py")
         print("   2. Monitor pending tokens via: GET /warehouse/pending")
         print("   3. Check system health via: GET /warehouse/health")
+    elif ethereum_ready and warehouse_ready:
+        print("⚠️ PARTIALLY OPERATIONAL - Services initialized but Ethereum connection unavailable")
+        print("✅ Etherscan API Key: Configured")
+        print("✅ Warehouse API: Ready for automatic token withdrawals")
+        print("❌ Ethereum Connection: Failed - Check network connectivity")
+        print("\n💡 TROUBLESHOOTING:")
+        print("   1. Verify RPC endpoints are accessible from your deployment environment")
+        print("   2. Check firewall settings if deploying on restricted networks")
+        print("   3. Consider using a dedicated Ethereum node service like Infura")
     elif ethereum_ready:
-        print("⚠️ PARTIALLY OPERATIONAL - Ethereum service running, Warehouse unavailable")
+        print("⚠️ PARTIALLY OPERATIONAL - Ethereum service initialized but Warehouse unavailable")
         print("✅ Ethereum API: Ready")
         print("❌ Warehouse API: Not available")
     else:
         print("❌ SERVICE ISSUES - Please check configuration and dependencies")
-        
+
     print("=" * 70)
 
     # Run the Flask server
