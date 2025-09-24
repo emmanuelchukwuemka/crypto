@@ -59,6 +59,45 @@ CHAIN_ID=1
 RPC_ENDPOINT=https://ethereum-rpc.publicnode.com
 ```
 
+## 🛠️ Troubleshooting Etherscan Integration Issues
+
+If you're experiencing issues with Etherscan integration (showing as "not running"), follow these steps:
+
+### 1. Diagnose the Issue
+Run the diagnostic script to identify connection problems:
+```bash
+python diagnose_ethereum_connection.py
+```
+
+### 2. Common Issues and Solutions
+
+#### Ethereum Connection Failure
+- **Issue**: `connected: false` in status endpoint
+- **Solution**: 
+  1. Check network connectivity from your deployment environment
+  2. Try different RPC endpoints (Infura, Alchemy, etc.)
+  3. Verify firewall settings allow outbound HTTPS connections
+
+#### Etherscan API Key Issues
+- **Issue**: Etherscan API key not configured or invalid
+- **Solution**:
+  1. Verify `ETHERSCAN_API_KEY` environment variable is set
+  2. Check that your API key is valid on Etherscan.io
+  3. Ensure you haven't exceeded daily request limits
+
+#### Render Deployment Issues
+- **Issue**: Connection works locally but fails on Render
+- **Solution**:
+  1. Check Render environment variables match your local config
+  2. Verify Render can access external RPC endpoints
+  3. Consider using dedicated node services (Infura/Alchemy)
+
+### 3. Fix Etherscan Integration
+Run the fix script to automatically resolve common issues:
+```bash
+python fix_etherscan_integration.py
+```
+
 ## 🛡️ Security Features
 
 - **Private keys never stored** - Only used for transaction signing
@@ -130,6 +169,7 @@ For issues or questions:
 1. Check the API documentation at `/`
 2. Monitor health endpoints
 3. Review logs for error details
+4. Run diagnostic scripts to identify connection issues
 
 ---
 

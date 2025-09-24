@@ -162,10 +162,19 @@ def get_balance(address: str):
         client = get_client()
         balance = client.get_balance(address)
 
+        # Only try to convert to wei if client is properly initialized
+        balance_wei = 0
+        if hasattr(client, 'w3') and client.w3:
+            try:
+                balance_wei = client.w3.to_wei(balance, 'ether')
+            except:
+                # Fallback if there's an issue with the conversion
+                balance_wei = int(balance * 10**18)
+
         return jsonify(create_response(True, {
             "address": address,
             "balance_eth": balance,
-            "balance_wei": client.w3.to_wei(balance, 'ether')
+            "balance_wei": balance_wei
         }))
 
     except Exception as e:
@@ -257,7 +266,15 @@ def get_gas_price():
     try:
         client = get_client()
         gas_price_wei = client.get_gas_price()
-        gas_price_gwei = float(client.w3.from_wei(gas_price_wei, 'gwei'))
+        
+        # Only try to convert if client is properly initialized
+        gas_price_gwei = 0
+        if hasattr(client, 'w3') and client.w3:
+            try:
+                gas_price_gwei = float(client.w3.from_wei(gas_price_wei, 'gwei'))
+            except:
+                # Fallback calculation
+                gas_price_gwei = gas_price_wei / 10**9
 
         return jsonify(create_response(True, {
             "gas_price_wei": gas_price_wei,
@@ -333,13 +350,24 @@ def create_transaction():
 
         # Add transaction cost estimate
         total_cost_wei = transaction['value'] + (transaction['gas'] * transaction['gasPrice'])
-        total_cost_eth = float(client.w3.from_wei(total_cost_wei, 'ether'))
+        
+        # Only try to convert if client is properly initialized
+        total_cost_eth = 0
+        gas_cost_eth = 0
+        if hasattr(client, 'w3') and client.w3:
+            try:
+                total_cost_eth = float(client.w3.from_wei(total_cost_wei, 'ether'))
+                gas_cost_eth = float(client.w3.from_wei(transaction['gas'] * transaction['gasPrice'], 'ether'))
+            except:
+                # Fallback calculations
+                total_cost_eth = total_cost_wei / 10**18
+                gas_cost_eth = (transaction['gas'] * transaction['gasPrice']) / 10**18
 
         response_data = {
             "transaction": transaction,
             "cost_estimate": {
                 "amount_eth": amount_eth,
-                "gas_cost_eth": float(client.w3.from_wei(transaction['gas'] * transaction['gasPrice'], 'ether')),
+                "gas_cost_eth": gas_cost_eth,
                 "total_cost_eth": total_cost_eth
             },
             "ready_to_sign": True
@@ -406,10 +434,17 @@ def execute_withdrawal():
         signed_txn = Account.sign_transaction(transaction, private_key)
 
         # Send transaction
-        tx_hash = client.w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-        tx_hash_hex = tx_hash.hex()
-
-        logger.info(f"✅ Transaction sent: {tx_hash_hex}")
+        # Only try to send if client is properly initialized
+        tx_hash_hex = ""
+        if hasattr(client, 'w3') and client.w3:
+            try:
+                tx_hash = client.w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+                tx_hash_hex = tx_hash.hex()
+                logger.info(f"✅ Transaction sent: {tx_hash_hex}")
+            except Exception as e:
+                return jsonify(create_response(False, error=f"Failed to send transaction: {e}")), 400
+        else:
+            return jsonify(create_response(False, error="Ethereum client not properly initialized")), 400
 
         response_data = {
             "transaction_hash": tx_hash_hex,
@@ -419,26 +454,35 @@ def execute_withdrawal():
             "amount_eth": amount_eth,
             "nonce": transaction['nonce'],
             "gas_used": transaction['gas'],
-            "gas_price_gwei": float(client.w3.from_wei(transaction['gasPrice'], 'gwei')),
+            "gas_price_gwei": 0,  # Default value
             "status": "sent",
             "explorer_url": f"https://etherscan.io/tx/{tx_hash_hex}"
         }
+
+        # Try to get gas price in gwei if client is properly initialized
+        if hasattr(client, 'w3') and client.w3:
+            try:
+                response_data["gas_price_gwei"] = float(client.w3.from_wei(transaction['gasPrice'], 'gwei'))
+            except:
+                # Fallback calculation
+                response_data["gas_price_gwei"] = transaction['gasPrice'] / 10**9
 
         # Wait for confirmation if requested
         if wait_for_confirmation:
             try:
                 logger.info("⏳ Waiting for transaction confirmation...")
-                receipt = client.w3.eth.wait_for_transaction_receipt(tx_hash_hex, timeout=120)
-
-                response_data.update({
-                    "status": "confirmed" if receipt['status'] == 1 else "failed",
-                    "block_number": receipt['blockNumber'],
-                    "actual_gas_used": receipt['gasUsed'],
-                    "confirmation_time": datetime.now().isoformat()
-                })
-
-                logger.info(f"✅ Transaction confirmed in block {receipt['blockNumber']}")
-
+                if hasattr(client, 'w3') and client.w3:
+                    receipt = client.w3.eth.wait_for_transaction_receipt(tx_hash_hex, timeout=120)
+                    response_data.update({
+                        "status": "confirmed" if receipt['status'] == 1 else "failed",
+                        "block_number": receipt['blockNumber'],
+                        "actual_gas_used": receipt['gasUsed'],
+                        "confirmation_time": datetime.now().isoformat()
+                    })
+                    logger.info(f"✅ Transaction confirmed in block {receipt['blockNumber']}")
+                else:
+                    response_data["status"] = "sent_pending"
+                    response_data["confirmation_error"] = "Ethereum client not properly initialized"
             except Exception as e:
                 logger.warning(f"Confirmation timeout: {e}")
                 response_data["status"] = "sent_pending"
@@ -782,7 +826,18 @@ def create_warehouse_transaction():
         
         # Calculate cost estimate
         gas_cost_wei = transaction['gas'] * transaction['gasPrice']
-        gas_cost_eth = float(warehouse_client.w3.from_wei(gas_cost_wei, 'ether'))
+        
+        # Only try to convert if warehouse_client is properly initialized
+        gas_cost_eth = 0
+        if hasattr(warehouse_client, 'w3') and warehouse_client.w3:
+            try:
+                gas_cost_eth = float(warehouse_client.w3.from_wei(gas_cost_wei, 'ether'))
+            except:
+                # Fallback calculation
+                gas_cost_eth = gas_cost_wei / 10**18
+        else:
+            # Fallback calculation
+            gas_cost_eth = gas_cost_wei / 10**18
         
         result = {
             "transaction": transaction,
@@ -839,7 +894,13 @@ def health_check():
     """Health check endpoint"""
     try:
         client = get_client()
-        connected = client.w3.is_connected()
+        # Check if client is properly initialized before checking connection
+        connected = False
+        if hasattr(client, 'w3') and client.w3:
+            try:
+                connected = client.w3.is_connected()
+            except:
+                connected = False
 
         return jsonify({
             "status": "healthy" if connected else "unhealthy",
@@ -908,6 +969,7 @@ def run_server():
         print("   Check your warehouse_config.json and ensure all dependencies are installed")
 
     # Get system status
+    status = {}
     try:
         if ethereum_client is not None:
             status = ethereum_client.get_system_status()
@@ -965,7 +1027,7 @@ def run_server():
     print(f"\n🎯 Service Status Summary:")
     ethereum_ready = ethereum_client is not None
     warehouse_ready = warehouse_client is not None
-    ethereum_connected = status.get('connected', False) if 'status' in locals() else False
+    ethereum_connected = status.get('connected', False) if status else False
     
     if ethereum_ready and warehouse_ready and ethereum_connected:
         print("✅ FULLY OPERATIONAL - Both Ethereum and Warehouse services are running!")
