@@ -6,7 +6,7 @@ import requests
 import json
 import os
 
-def test_etherscan_integration(base_url="http://localhost:5000"):
+def test_etherscan_integration(base_url="http://localhost:3000"):
     """Test Etherscan integration by checking the status endpoint"""
     print(f"🔍 Testing Etherscan integration on {base_url}")
     print("=" * 50)

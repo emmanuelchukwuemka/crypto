@@ -3,8 +3,8 @@
 ## 🚀 Server Status: **RUNNING AND OPERATIONAL**
 
 Your Ethereum withdrawal server v2.0 is now running at:
-- **Local Access**: http://localhost:5000
-- **Network Access**: http://192.168.93.176:5000
+- **Local Access**: http://localhost:3000
+- **Network Access**: http://192.168.93.176:3000
 
 ## ✅ **Current System Status**
 - ✅ **Server**: Online and healthy
@@ -19,7 +19,7 @@ Your Ethereum withdrawal server v2.0 is now running at:
 
 ### 1. **Health Check**
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:3000/health
 ```
 **Response:**
 ```json
@@ -32,7 +32,7 @@ curl http://localhost:5000/health
 
 ### 2. **System Status**
 ```bash
-curl http://localhost:5000/status
+curl http://localhost:3000/status
 ```
 **Response:**
 ```json
@@ -55,7 +55,7 @@ curl http://localhost:5000/status
 
 ### 3. **Get Balance**
 ```bash
-curl http://localhost:5000/balance/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
+curl http://localhost:3000/balance/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
 ```
 **Response:**
 ```json
@@ -72,7 +72,7 @@ curl http://localhost:5000/balance/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
 
 ### 4. **Get Current Nonce**
 ```bash
-curl http://localhost:5000/nonce/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
+curl http://localhost:3000/nonce/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
 ```
 **Response:**
 ```json
@@ -89,7 +89,7 @@ curl http://localhost:5000/nonce/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
 
 ### 5. **Validate Nonce**
 ```bash
-curl -X POST http://localhost:5000/validate-nonce \
+curl -X POST http://localhost:3000/validate-nonce \
   -H "Content-Type: application/json" \
   -d '{
     "address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
@@ -113,7 +113,7 @@ curl -X POST http://localhost:5000/validate-nonce \
 
 ### 6. **Resolve ENS Name**
 ```bash
-curl -X POST http://localhost:5000/resolve-ens \
+curl -X POST http://localhost:3000/resolve-ens \
   -H "Content-Type: application/json" \
   -d '{
     "ens_name": "Obasimartins65.eth"
@@ -134,7 +134,7 @@ curl -X POST http://localhost:5000/resolve-ens \
 
 ### 7. **Get Gas Price**
 ```bash
-curl http://localhost:5000/gas-price
+curl http://localhost:3000/gas-price
 ```
 **Response:**
 ```json
@@ -151,7 +151,7 @@ curl http://localhost:5000/gas-price
 
 ### 8. **Get Withdrawal Configuration**
 ```bash
-curl http://localhost:5000/withdraw-config/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
+curl http://localhost:3000/withdraw-config/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58
 ```
 **Response:**
 ```json
@@ -174,7 +174,7 @@ curl http://localhost:5000/withdraw-config/0xB5c1baF2E532Bb749a6b2034860178A3558
 
 ### 9. **Create Transaction (Unsigned)**
 ```bash
-curl -X POST http://localhost:5000/create-transaction \
+curl -X POST http://localhost:3000/create-transaction \
   -H "Content-Type: application/json" \
   -d '{
     "from_address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
@@ -209,7 +209,7 @@ curl -X POST http://localhost:5000/create-transaction \
 
 ### 10. **Execute Withdrawal (Complete Transaction)**
 ```bash
-curl -X POST http://localhost:5000/execute-withdrawal \
+curl -X POST http://localhost:3000/execute-withdrawal \
   -H "Content-Type: application/json" \
   -d '{
     "from_address": "0xB5c1baF2E532Bb749a6b2034860178A3558b6e58",
@@ -239,7 +239,7 @@ curl -X POST http://localhost:5000/execute-withdrawal \
 
 ### 11. **Get EIP-712 Domain**
 ```bash
-curl http://localhost:5000/eip712-domain
+curl http://localhost:3000/eip712-domain
 ```
 **Response:**
 ```json
@@ -316,10 +316,10 @@ python server_client_example.py
 ### PowerShell/Windows
 ```powershell
 # Check server health
-Invoke-RestMethod -Uri "http://localhost:5000/health" -Method GET
+Invoke-RestMethod -Uri "http://localhost:3000/health" -Method GET
 
 # Get balance
-Invoke-RestMethod -Uri "http://localhost:5000/balance/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58" -Method GET
+Invoke-RestMethod -Uri "http://localhost:3000/balance/0xB5c1baF2E532Bb749a6b2034860178A3558b6e58" -Method GET
 
 # Validate nonce
 $body = @{
@@ -327,5 +327,5 @@ $body = @{
     nonce = 137
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://localhost:5000/validate-nonce" -Method POST -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri "http://localhost:3000/validate-nonce" -Method POST -Body $body -ContentType "application/json"
 ```

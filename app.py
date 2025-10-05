@@ -1056,7 +1056,7 @@ def run_server():
     print("=" * 70)
 
     # Run the Flask server
-    port = int(os.getenv('PORT', 5000))
+    port = int(os.getenv('PORT', 3000))
     app.run(host='0.0.0.0', port=port, debug=False)
 
 # Production server entry point for gunicorn

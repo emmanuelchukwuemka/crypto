@@ -153,7 +153,7 @@ pip install -r requirements.txt
 # Run locally
 python app.py
 
-# Server will start on http://localhost:5000
+# Server will start on http://localhost:3000
 ```
 
 ## 📈 Performance

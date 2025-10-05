@@ -18,7 +18,7 @@ First, check if there are any funds available in the WarehouseClient:
 
 ```bash
 # Using the API
-curl http://localhost:5000/warehouse/balances
+curl http://localhost:3000/warehouse/balances
 
 # Or using the test script
 python test_warehouse.py
@@ -31,7 +31,7 @@ To execute a complete two-step withdrawal (source → warehouse → wallet):
 #### Option A: Using the API
 
 ```bash
-curl -X POST http://localhost:5000/warehouse/complete-withdraw \
+curl -X POST http://localhost:3000/warehouse/complete-withdraw \
   -H "Content-Type: application/json" \
   -d '{
     "private_key": "YOUR_PRIVATE_KEY"
